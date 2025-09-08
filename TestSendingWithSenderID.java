@@ -12,8 +12,8 @@ public class TestSendingWithSenderID {
 
     public static void main(String[] args) {
 		/* Set your app credentials */
-		String USERNAME ="bollaApp";
-		String API_KEY = "atsk_01e1b2bf693926aab071d85c0c40ba85e1adfacf15a041f68d26c96b47a63823429b23b3";
+		String USERNAME ="";
+		String API_KEY = "";
 
 		/* Initialize SDK */
 		AfricasTalking.initialize(USERNAME, API_KEY);
