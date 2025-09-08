@@ -1,0 +1,144 @@
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command: --providers.docker=true
+      --providers.docker.exposedbydefault=false
+      --providers.docker.network=bolla-app_bolla-network
+
+      --entrypoints.web.address=:80
+      --entrypoints.websecure.address=:443
+
+      --entrypoints.web.http.redirections.entryPoint.to=websecure
+      --entrypoints.web.http.redirections.entryPoint.scheme=https
+
+      --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+
+      --api.dashboard=true
+      --api.insecure=false
+
+      --log.level=INFO
+      --accesslog=true
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+
+    networks:
+      - bolla-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
+
+  postgres:
+    container_name: bollaApp-db
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - bolla-network
+
+  backend:
+    container_name: bollaApp-backend
+    image: markian538/bolla-backend:latest
+    environment:
+      FRONTEND_URL: ${FRONTEND_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_URL: ${DB_URL}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      MTN_MOMO_BASEURL: ${MTN_MOMO_BASEURL}
+      MOMO_CUSTOMER_SUBSCRIPTION_KEY: ${MOMO_CUSTOMER_SUBSCRIPTION_KEY}
+      MOMO_CUSTOMER_API_USER: ${MOMO_CUSTOMER_API_USER}
+      MOMO_CUSTOMER_API_KEY: ${MOMO_CUSTOMER_API_KEY}
+      MOMO_CUSTOMER_CALLBACK_URL: ${MOMO_CUSTOMER_CALLBACK_URL}
+      MOMO_COLLECTOR_SUBSCRIPTION_KEY: ${MOMO_COLLECTOR_SUBSCRIPTION_KEY}
+      MOMO_COLLECTOR_API_USER: ${MOMO_COLLECTOR_API_USER}
+      MOMO_COLLECTOR_API_KEY: ${MOMO_COLLECTOR_API_KEY}
+      MOMO_COLLECTOR_CALLBACK_URL: ${MOMO_COLLECTOR_CALLBACK_URL}
+      UPLOAD_DIR: /app/uploads
+      BASE_URL: ${BASE_URL}
+      AFRICAS_TALKING_API_KEY: ${AFRICAS_TALKING_API_KEY}
+      AFRICAS_TALKING_API_KEY_LIVE: ${AFRICAS_TALKING_API_KEY_LIVE}
+      AFRICAS_TALKING_APP_NAME: ${AFRICAS_TALKING_APP_NAME}
+      AFRICAS_TALKING_USERNAME: ${AFRICAS_TALKING_USERNAME}
+      AFRICAS_TALKING_SHORT_CODE: ${AFRICAS_TALKING_SHORT_CODE}
+    expose:
+      - "8081"
+    depends_on:
+      - postgres
+      - traefik
+    networks:
+      - bolla-network
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN_NAME}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.backend.priority=1000"
+      - "traefik.http.services.backend.loadbalancer.server.port=8081"
+
+      - "traefik.http.routers.backend-images.rule=Host(`${DOMAIN_NAME}`) && PathPrefix(`/images`)"
+      - "traefik.http.routers.backend-images.entrypoints=websecure"
+      - "traefik.http.routers.backend-images.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.backend-images.priority=1000"
+
+  frontend:
+    container_name: bollaApp-frontend
+    image: markian538/bolla-frontend:traefik
+    environment:
+      NEXT_PUBLIC_BASE_URL: https://${DOMAIN_NAME}/api/v1
+      NEXT_PUBLIC_BASE_URL_OAUTH: https://${DOMAIN_NAME}
+      NEXT_PUBLIC_WS_URL: wss://${DOMAIN_NAME}
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+      NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID}
+
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+      - traefik
+    networks:
+      - bolla-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend.priority=10"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+
+networks:
+  bolla-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  letsencrypt:
